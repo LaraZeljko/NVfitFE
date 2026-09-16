@@ -28,6 +28,15 @@ export function parseReps(text: string): number | null | undefined {
   return value
 }
 
+/** Whole numbers with an upper bound — calories, protein. */
+export function parseWholeNumber(text: string, max: number): number | null | undefined {
+  const normalized = text.trim()
+  if (normalized === '') return null
+  const value = Number(normalized)
+  if (!Number.isInteger(value) || value < 0 || value > max) return undefined
+  return value
+}
+
 export function hasValues(set: SetValues) {
   return set.weight_kg !== null || set.reps !== null
 }

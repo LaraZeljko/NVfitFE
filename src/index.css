@@ -1,25 +1,28 @@
 :root {
-  /* Surfaces */
+  /* Surfaces — near black with a warm cast */
   --bg: #0e0f12;
-  --surface: #17191e;
-  --surface-2: #1f2228;
-  --border: #2a2e36;
-  --border-strong: #3a3f48;
+  --surface: #16161a;
+  --surface-2: #1e1e24;
+  --border: #2a2a31;
+  --border-strong: #3a3a44;
 
   /* Text */
-  --text: #f2f3f5;
+  --text: #f5f5f7;
   --muted: #9aa0ab;
 
-  /* Accent (buttons, brand) */
-  --accent: #c8f53c;
-  --accent-ink: #0e0f12;
+  /* Accent: deep red, white text on top (contrast 5.0) */
+  --accent: #d62828;
+  --accent-ink: #ffffff;
+  --accent-bright: #e5383b;
+  --accent-soft: rgba(214, 40, 40, 0.14);
 
   /* Data colour in charts (validated against the dark surface) */
-  --series: #7aa414;
+  --series: #e5383b;
 
-  /* Direction of change */
+  /* Direction of change — down is amber, never red, so it is not
+     confused with the brand colour */
   --up: #8fe388;
-  --down: #ff8f80;
+  --down: #ffa64d;
   --danger: #ff8f80;
 
   --radius: 14px;
@@ -56,7 +59,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -109,7 +112,22 @@ a {
 }
 
 .brand-word b {
-  color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.logo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 28%;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .eyebrow {
@@ -164,8 +182,8 @@ a {
 }
 
 .btn--accent-outline {
-  background: transparent;
-  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
   color: var(--text);
 }
 
@@ -237,7 +255,7 @@ a {
 }
 
 .field:focus {
-  border-color: var(--accent);
+  border-color: var(--accent-bright);
   outline: none;
 }
 
@@ -272,7 +290,7 @@ a {
 
 .title-input:focus {
   outline: none;
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--accent-bright);
 }
 
 /* ---------- Week ---------- */
@@ -392,6 +410,7 @@ a {
 }
 
 .tabbar__link {
+  position: relative;
   flex: 1;
   max-width: 180px;
   display: grid;
@@ -404,9 +423,21 @@ a {
   font-weight: 600;
 }
 
+/* The active tab keeps full-contrast text and wears a red marker,
+   so the state never rests on colour alone. */
 .tabbar__link.active {
-  color: var(--accent);
+  color: var(--text);
   background: var(--surface-2);
+}
+
+.tabbar__link.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 28px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent-bright);
 }
 
 .day-strip {
@@ -504,8 +535,8 @@ a {
   height: 24px;
   flex: none;
   border-radius: 8px;
-  background: var(--surface-2);
-  color: var(--muted);
+  background: var(--accent-soft);
+  color: var(--accent-bright);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -739,8 +770,8 @@ a {
 }
 
 .segmented__btn[aria-pressed='true'] {
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .stats {
@@ -960,7 +991,7 @@ a {
   width: 22px;
   height: 22px;
   border: 2px solid var(--border-strong);
-  border-top-color: var(--accent);
+  border-top-color: var(--accent-bright);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1049,4 +1080,106 @@ code {
   border-radius: 6px;
   background: var(--surface-2);
   font-size: 0.85em;
+}
+
+/* ---------- Timer ---------- */
+
+.timer {
+  position: sticky;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 8;
+  margin-top: 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.timer.is-done {
+  border-color: var(--up);
+}
+
+.timer__bar {
+  height: 3px;
+  background: var(--border);
+}
+
+.timer__bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent-bright);
+  transform-origin: left center;
+  transition: transform 0.25s linear;
+}
+
+.timer.is-done .timer__bar span {
+  background: var(--up);
+}
+
+.timer__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+}
+
+.timer__time {
+  flex: 1;
+  display: grid;
+  gap: 0;
+}
+
+.timer__label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.timer__time strong {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.timer__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- Chips (settings) ---------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.chip {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.settings-field {
+  max-width: 180px;
+}
+
+.start-set {
+  margin-bottom: 12px;
 }

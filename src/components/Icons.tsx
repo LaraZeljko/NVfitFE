@@ -97,17 +97,30 @@ export const LogOut = () => (
   </Icon>
 )
 
+export const Heart = () => (
+  <Icon>
+    <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z" />
+  </Icon>
+)
+
+export const Trash = () => (
+  <Icon width={18} height={18}>
+    <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+  </Icon>
+)
+
+export const Gear = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </Icon>
+)
+
+/** The app's mascot. Decorative — the wordmark next to it carries the name. */
 export function Logo({ size = 40 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true" focusable="false">
-      <rect width="512" height="512" rx="112" fill="var(--surface-2)" />
-      <g fill="var(--accent)" transform="rotate(-35 256 256)">
-        <rect x="156" y="240" width="200" height="32" rx="10" />
-        <rect x="124" y="176" width="44" height="160" rx="14" />
-        <rect x="344" y="176" width="44" height="160" rx="14" />
-        <rect x="84" y="204" width="36" height="104" rx="12" />
-        <rect x="392" y="204" width="36" height="104" rx="12" />
-      </g>
-    </svg>
+    <span className="logo" style={{ width: size, height: size }}>
+      <img src="/cat.png" alt="" width={size} height={size} loading="eager" />
+    </span>
   )
 }

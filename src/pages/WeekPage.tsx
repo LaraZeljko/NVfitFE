@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, ChevronRight, Logo, LogOut } from '../components/Icons'
+import { Check, ChevronRight, Gear, Logo, LogOut } from '../components/Icons'
 import { ErrorState, Loading, OfflineBanner } from '../components/Status'
 import TabBar from '../components/TabBar'
 import { fetchDays, fetchExercises, fetchSets, signOut } from '../lib/api'
@@ -55,6 +55,9 @@ export default function WeekPage() {
             NV<b>fit</b>
           </span>
         </div>
+        <Link to="/settings" className="icon-btn" aria-label="Settings" title="Settings">
+          <Gear />
+        </Link>
         <button type="button" className="icon-btn" onClick={handleSignOut} aria-label="Sign out" title="Sign out">
           <LogOut />
         </button>

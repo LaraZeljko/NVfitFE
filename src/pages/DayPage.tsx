@@ -6,8 +6,11 @@ import ExerciseCard from '../components/ExerciseCard'
 import type { PreviousSets } from '../components/ExerciseCard'
 import { ChevronLeft, Plus } from '../components/Icons'
 import { ErrorState, Loading, OfflineBanner, SaveIndicator } from '../components/Status'
+import TimerBar from '../components/TimerBar'
 import WeekSwitcher from '../components/WeekSwitcher'
 import { useSaveQueue } from '../hooks/useSaveQueue'
+import { useSettings } from '../hooks/useSettings'
+import { useTimer } from '../hooks/useTimer'
 import {
   addExercise,
   addSet,
@@ -51,6 +54,8 @@ export default function DayPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [newName, setNewName] = useState('')
   const save = useSaveQueue()
+  const timer = useTimer()
+  const { settings } = useSettings()
 
   const exercisesRef = useRef(exercises)
   exercisesRef.current = exercises
@@ -134,6 +139,11 @@ export default function DayPage() {
       prev.map(s => (s.exercise_id === exerciseId && s.week_start === w && s.set_number === setNumber ? { ...s, ...values } : s)),
     )
     void save.run(() => saveSet(exerciseId, w, setNumber, values))
+
+    // A finished set starts the rest countdown — but only while logging the current week.
+    if (w === thisWeek && hasValues(values) && settings && settings.rest_seconds > 0) {
+      timer.start(settings.rest_seconds, 'rest')
+    }
   }
 
   async function handleAddSet(exerciseId: string) {
@@ -274,6 +284,16 @@ export default function DayPage() {
 
           <WeekSwitcher week={week} onChange={changeWeek} />
 
+          {week === thisWeek && settings && settings.set_seconds > 0 && (
+            <button
+              type="button"
+              className="btn btn--small btn--accent-outline start-set"
+              onClick={() => timer.start(settings.set_seconds, 'set')}
+            >
+              Start set ({settings.set_seconds}s)
+            </button>
+          )}
+
           <div className={`exercise-list${refreshing ? ' is-refreshing' : ''}`} aria-busy={refreshing}>
             {exercises.length === 0 && (
               <p className="empty">No exercises for this day yet. Add the first one below, or keep it as a rest day.</p>
@@ -314,6 +334,8 @@ export default function DayPage() {
           </form>
         </>
       )}
+
+      <TimerBar timer={timer} />
     </div>
   )
 }

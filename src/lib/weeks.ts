@@ -45,6 +45,20 @@ export function isValidWeekStart(value: string | null): value is string {
   return toISODate(date) === value && date.getDay() === 1
 }
 
+export function todayISO() {
+  return toISODate(new Date())
+}
+
+export function addDays(value: string, count: number) {
+  const date = parseISODate(value)
+  date.setDate(date.getDate() + count)
+  return toISODate(date)
+}
+
+export function daysBetween(from: string, to: string) {
+  return Math.round((parseISODate(to).getTime() - parseISODate(from).getTime()) / DAY_MS)
+}
+
 /** 1 = Monday ... 7 = Sunday */
 export function todayDayOfWeek() {
   return ((new Date().getDay() + 6) % 7) + 1
