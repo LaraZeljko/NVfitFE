@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { formatSet, plural } from '../lib/format'
@@ -17,20 +17,34 @@ type Props = {
   sets: ExerciseSet[]
   previous: PreviousSets | null
   maxSets: number
+  /** True when this week's top weight beats every earlier week. */
+  isRecord: boolean
+  note: string
+  /** id of the <datalist> with the exercise catalog */
+  catalogId: string
   onSaveSet: (setNumber: number, values: SetValues) => void
   onAddSet: () => void
   onDeleteSet: (set: ExerciseSet) => void
   onCopyPrevious: () => void
+  onSaveNote: (note: string) => void
   onRename: (name: string) => void
   onMove: (direction: -1 | 1) => void
   onDelete: () => void
 }
 
 export default function ExerciseCard(props: Props) {
-  const { exercise, index, isFirst, isLast, sets, previous, maxSets } = props
+  const { exercise, index, isFirst, isLast, sets, previous, maxSets, isRecord, note, catalogId } = props
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [nameDraft, setNameDraft] = useState(exercise.name)
+  const [noteOpen, setNoteOpen] = useState(note !== '')
+  const [noteDraft, setNoteDraft] = useState(note)
+
+  // Notes arrive after the cards are already on screen, so pick up what loads later.
+  useEffect(() => {
+    setNoteDraft(note)
+    if (note !== '') setNoteOpen(true)
+  }, [note])
 
   function submitRename(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -44,6 +58,12 @@ export default function ExerciseCard(props: Props) {
     if (window.confirm(`Delete "${exercise.name}" and all of its logged sets?`)) props.onDelete()
   }
 
+  function commitNote() {
+    const trimmed = noteDraft.trim()
+    if (trimmed === note) return
+    props.onSaveNote(trimmed)
+  }
+
   return (
     <article className="exercise">
       <header className="exercise__head">
@@ -54,6 +74,7 @@ export default function ExerciseCard(props: Props) {
           <form className="exercise__rename" onSubmit={submitRename}>
             <input
               className="field"
+              list={catalogId}
               value={nameDraft}
               onChange={e => setNameDraft(e.target.value)}
               maxLength={80}
@@ -77,6 +98,11 @@ export default function ExerciseCard(props: Props) {
         ) : (
           <>
             <h2 className="exercise__name">{exercise.name}</h2>
+            {isRecord && (
+              <span className="badge badge--pr" title="Heavier than any week before">
+                New PR
+              </span>
+            )}
             <button
               type="button"
               className="icon-btn icon-btn--quiet"
@@ -142,6 +168,21 @@ export default function ExerciseCard(props: Props) {
         </div>
       )}
 
+      {noteOpen && (
+        <input
+          className="field exercise__note"
+          value={noteDraft}
+          onChange={e => setNoteDraft(e.target.value)}
+          onBlur={commitNote}
+          onKeyDown={e => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+          }}
+          maxLength={500}
+          placeholder="Note — e.g. shoulder hurt, try 65 next time"
+          aria-label={`Note for ${exercise.name}`}
+        />
+      )}
+
       <div className="exercise__actions">
         {sets.length === 0 && previous && (
           <button type="button" className="btn btn--accent-outline" onClick={props.onCopyPrevious}>
@@ -151,6 +192,11 @@ export default function ExerciseCard(props: Props) {
         <button type="button" className="btn btn--ghost" onClick={props.onAddSet} disabled={sets.length >= maxSets}>
           <Plus /> Set
         </button>
+        {!noteOpen && (
+          <button type="button" className="btn btn--ghost" onClick={() => setNoteOpen(true)}>
+            Note
+          </button>
+        )}
       </div>
     </article>
   )

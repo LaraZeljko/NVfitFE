@@ -16,22 +16,29 @@ import {
   addSet,
   deleteExercise,
   deleteSet,
+  fetchCatalog,
+  fetchDayNote,
   fetchDays,
+  fetchExerciseNotes,
   fetchExercises,
   fetchSets,
+  logSession,
   renameExercise,
+  saveDayNote,
+  saveExerciseNote,
   saveSet,
   saveSets,
   setExercisePosition,
   updateDayTitle,
 } from '../lib/api'
 import { errorMessage, hasValues } from '../lib/format'
-import { DAY_NAMES, addWeeks, currentWeekStart, isValidWeekStart } from '../lib/weeks'
+import { DAY_NAMES, addWeeks, currentWeekStart, isValidWeekStart, todayISO } from '../lib/weeks'
 import type { Exercise, ExerciseSet, SetValues, TrainingDay } from '../types'
 
 // How many weeks back we look for the "last time" values of each exercise.
 const HISTORY_WEEKS = 12
 const MAX_SETS = 20
+const CATALOG_ID = 'exercise-catalog'
 
 const bySetNumber = (a: ExerciseSet, b: ExerciseSet) => a.set_number - b.set_number
 
@@ -50,6 +57,9 @@ export default function DayPage() {
   const [exercises, setExercises] = useState<Exercise[] | null>(null)
   const [sets, setSets] = useState<ExerciseSet[]>([])
   const [setsKey, setSetsKey] = useState('')
+  const [notes, setNotes] = useState<Record<string, string>>({})
+  const [dayNote, setDayNote] = useState('')
+  const [catalog, setCatalog] = useState<string[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [newName, setNewName] = useState('')
@@ -59,6 +69,24 @@ export default function DayPage() {
 
   const exercisesRef = useRef(exercises)
   exercisesRef.current = exercises
+
+  // Today's training session is written once per visit, not on every saved set.
+  const sessionLoggedRef = useRef(false)
+
+  // The catalog of common exercise names — read once, used by the suggestions.
+  useEffect(() => {
+    let alive = true
+    fetchCatalog()
+      .then(rows => {
+        if (alive) setCatalog(rows.map(row => row.name))
+      })
+      .catch(() => {
+        // Suggestions are optional; typing a name always works.
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // The day and its exercises
   useEffect(() => {
@@ -86,25 +114,29 @@ export default function DayPage() {
     }
   }, [dow, validDow, reloadKey])
 
-  // Sets for the selected week plus a few weeks back (for the "last time" hints)
+  // Sets for the selected week plus a few weeks back, and this week's notes
   const loadedDayId = exercises ? day?.id : undefined
   useEffect(() => {
     const list = exercisesRef.current
     if (!loadedDayId || !list) return
     let alive = true
-    fetchSets(
-      list.map(e => e.id),
-      addWeeks(week, -HISTORY_WEEKS),
-      week,
-    )
-      .then(rows => {
+    const ids = list.map(e => e.id)
+    ;(async () => {
+      try {
+        const [rows, exerciseNotes, note] = await Promise.all([
+          fetchSets(ids, addWeeks(week, -HISTORY_WEEKS), week),
+          fetchExerciseNotes(ids, week),
+          fetchDayNote(loadedDayId, week),
+        ])
         if (!alive) return
         setSets(rows)
+        setNotes(Object.fromEntries(exerciseNotes.map(n => [n.exercise_id, n.note])))
+        setDayNote(note?.note ?? '')
         setSetsKey(`${loadedDayId}|${week}`)
-      })
-      .catch(err => {
+      } catch (err) {
         if (alive) setLoadError(errorMessage(err))
-      })
+      }
+    })()
     return () => {
       alive = false
     }
@@ -119,6 +151,19 @@ export default function DayPage() {
     }
     return map
   }, [sets])
+
+  /** A record = this week's heaviest set beats every earlier week we loaded. */
+  const records = useMemo(() => {
+    const map = new Map<string, boolean>()
+    const heaviest = (list: ExerciseSet[], predicate: (s: ExerciseSet) => boolean) =>
+      list.reduce((top, s) => (predicate(s) && s.weight_kg !== null && s.weight_kg > top ? s.weight_kg : top), 0)
+    for (const [exerciseId, list] of setsByExercise) {
+      const current = heaviest(list, s => s.week_start === week)
+      const before = heaviest(list, s => s.week_start < week)
+      map.set(exerciseId, current > 0 && before > 0 && current > before)
+    }
+    return map
+  }, [setsByExercise, week])
 
   function currentSets(exerciseId: string) {
     return (setsByExercise.get(exerciseId) ?? []).filter(s => s.week_start === week).sort(bySetNumber)
@@ -140,9 +185,15 @@ export default function DayPage() {
     )
     void save.run(() => saveSet(exerciseId, w, setNumber, values))
 
-    // A finished set starts the rest countdown — but only while logging the current week.
-    if (w === thisWeek && hasValues(values) && settings && settings.rest_seconds > 0) {
-      timer.start(settings.rest_seconds, 'rest')
+    if (w === thisWeek && hasValues(values)) {
+      // Today counts as trained — this is what the streak is built from.
+      if (day && !sessionLoggedRef.current) {
+        sessionLoggedRef.current = true
+        const dayId = day.id
+        void save.run(() => logSession(todayISO(), dayId))
+      }
+      // A finished set starts the rest countdown.
+      if (settings && settings.rest_seconds > 0) timer.start(settings.rest_seconds, 'rest')
     }
   }
 
@@ -179,6 +230,23 @@ export default function DayPage() {
       ),
     )
     if (rows) setSets(prev => [...prev.filter(s => !(s.exercise_id === exerciseId && s.week_start === w)), ...rows])
+  }
+
+  // ---- Notes ----
+
+  function handleSaveNote(exerciseId: string, note: string) {
+    const w = week
+    setNotes(prev => ({ ...prev, [exerciseId]: note }))
+    void save.run(() => saveExerciseNote(exerciseId, w, note))
+  }
+
+  function handleDayNoteBlur() {
+    if (!day) return
+    const trimmed = dayNote.trim()
+    setDayNote(trimmed)
+    const w = week
+    const dayId = day.id
+    void save.run(() => saveDayNote(dayId, w, trimmed))
   }
 
   // ---- Exercises ----
@@ -294,6 +362,19 @@ export default function DayPage() {
             </button>
           )}
 
+          <input
+            className="field day-note"
+            value={dayNote}
+            onChange={e => setDayNote(e.target.value)}
+            onBlur={handleDayNoteBlur}
+            onKeyDown={e => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+            }}
+            maxLength={500}
+            placeholder="Note for this week's session"
+            aria-label="Note for this day"
+          />
+
           <div className={`exercise-list${refreshing ? ' is-refreshing' : ''}`} aria-busy={refreshing}>
             {exercises.length === 0 && (
               <p className="empty">No exercises for this day yet. Add the first one below, or keep it as a rest day.</p>
@@ -308,10 +389,14 @@ export default function DayPage() {
                 sets={currentSets(exercise.id)}
                 previous={previousSets(exercise.id)}
                 maxSets={MAX_SETS}
+                isRecord={records.get(exercise.id) ?? false}
+                note={notes[exercise.id] ?? ''}
+                catalogId={CATALOG_ID}
                 onSaveSet={(setNumber, values) => handleSaveSet(exercise.id, setNumber, values)}
                 onAddSet={() => void handleAddSet(exercise.id)}
                 onDeleteSet={set => handleDeleteSet(exercise.id, set)}
                 onCopyPrevious={() => void handleCopyPrevious(exercise.id)}
+                onSaveNote={note => handleSaveNote(exercise.id, note)}
                 onRename={name => handleRename(exercise, name)}
                 onMove={direction => handleMove(index, direction)}
                 onDelete={() => handleDeleteExercise(exercise)}
@@ -322,6 +407,7 @@ export default function DayPage() {
           <form className="add-exercise" onSubmit={handleAddExercise}>
             <input
               className="field"
+              list={CATALOG_ID}
               value={newName}
               onChange={e => setNewName(e.target.value)}
               placeholder={exercises.length ? 'New exercise' : 'e.g. Incline dumbbell press'}
@@ -332,6 +418,12 @@ export default function DayPage() {
               <Plus /> Add
             </button>
           </form>
+
+          <datalist id={CATALOG_ID}>
+            {catalog.map(name => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
         </>
       )}
 

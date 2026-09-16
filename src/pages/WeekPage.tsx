@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, ChevronRight, Gear, Logo, LogOut } from '../components/Icons'
+import { Check, ChevronRight, Gear, Heart, Logo, LogOut } from '../components/Icons'
 import { ErrorState, Loading, OfflineBanner } from '../components/Status'
+import StreakCard from '../components/StreakCard'
 import TabBar from '../components/TabBar'
-import { fetchDays, fetchExercises, fetchSets, signOut } from '../lib/api'
+import { pickImage, pickMessage, useCute } from '../hooks/useCute'
+import { fetchDays, fetchExercises, fetchSessions, fetchSets, signOut } from '../lib/api'
 import { errorMessage, hasValues, plural } from '../lib/format'
-import { DAY_NAMES, DAY_SHORT, currentWeekStart, formatWeekRange, todayDayOfWeek } from '../lib/weeks'
-import type { Exercise, ExerciseSet, TrainingDay } from '../types'
+import { computeStreak, restWeekdays } from '../lib/streak'
+import { DAY_NAMES, DAY_SHORT, addDays, currentWeekStart, formatWeekRange, todayDayOfWeek, todayISO } from '../lib/weeks'
+import type { Exercise, ExerciseSet, TrainingDay, WorkoutSession } from '../types'
+
+const STREAK_RANGE_DAYS = 180
 
 type WeekData = {
   days: TrainingDay[]
   exercises: Exercise[]
   weekSets: ExerciseSet[]
+  sessions: WorkoutSession[]
 }
 
 export default function WeekPage() {
@@ -20,6 +26,7 @@ export default function WeekPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const week = currentWeekStart()
   const today = todayDayOfWeek()
+  const { isAdmin, decoration } = useCute()
 
   useEffect(() => {
     let alive = true
@@ -27,12 +34,15 @@ export default function WeekPage() {
     ;(async () => {
       try {
         const [days, exercises] = await Promise.all([fetchDays(), fetchExercises()])
-        const weekSets = await fetchSets(
-          exercises.map(e => e.id),
-          week,
-          week,
-        )
-        if (alive) setData({ days, exercises, weekSets })
+        const [weekSets, sessions] = await Promise.all([
+          fetchSets(
+            exercises.map(e => e.id),
+            week,
+            week,
+          ),
+          fetchSessions(addDays(todayISO(), -STREAK_RANGE_DAYS)),
+        ])
+        if (alive) setData({ days, exercises, weekSets, sessions })
       } catch (err) {
         if (alive) setError(errorMessage(err))
       }
@@ -46,6 +56,8 @@ export default function WeekPage() {
     if (window.confirm('Sign out of NVfit?')) await signOut()
   }
 
+  const streak = data ? computeStreak(data.sessions, restWeekdays(data.days, data.exercises)) : null
+
   return (
     <div className="page page--tabs">
       <header className="top">
@@ -55,6 +67,11 @@ export default function WeekPage() {
             NV<b>fit</b>
           </span>
         </div>
+        {isAdmin && (
+          <Link to="/admin" className="icon-btn" aria-label="Messages and pictures" title="Messages and pictures">
+            <Heart />
+          </Link>
+        )}
         <Link to="/settings" className="icon-btn" aria-label="Settings" title="Settings">
           <Gear />
         </Link>
@@ -64,6 +81,15 @@ export default function WeekPage() {
       </header>
 
       <OfflineBanner />
+
+      {data && streak && decoration && (
+        <StreakCard
+          streak={streak}
+          image={pickImage(decoration.images, streak.state)}
+          message={pickMessage(decoration.messages)}
+          displayName={decoration.displayName}
+        />
+      )}
 
       <p className="eyebrow">{formatWeekRange(week)}</p>
       <h1 className="h1">Your week</h1>

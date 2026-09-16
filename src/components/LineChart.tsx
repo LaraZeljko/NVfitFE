@@ -36,11 +36,13 @@ function niceTicks(min: number, max: number, count = 4) {
     max += spread
   }
   const step = niceStep((max - min) / (count - 1))
+  // A step of 0 or NaN would make the loop below never advance.
+  if (!Number.isFinite(step) || step <= 0) return [min, max]
   const start = Math.floor(min / step) * step
   const end = Math.ceil(max / step) * step
   const ticks: number[] = []
-  for (let v = start; v <= end + step / 2; v += step) ticks.push(Number(v.toFixed(6)))
-  return ticks
+  for (let v = start; v <= end + step / 2 && ticks.length < 20; v += step) ticks.push(Number(v.toFixed(6)))
+  return ticks.length >= 2 ? ticks : [min, max]
 }
 
 export default function LineChart({ points, formatValue, ariaLabel }: Props) {
