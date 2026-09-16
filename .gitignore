@@ -1,0 +1,15 @@
+node_modules
+dist
+dev-dist
+*.tsbuildinfo
+*.log
+
+# Supabase keys
+.env
+.env.local
+.env.*.local
+
+.idea
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
