@@ -7,8 +7,10 @@ import { isConfigured } from './lib/supabase'
 import AdminPage from './pages/AdminPage'
 import BodyPage from './pages/BodyPage'
 import DayPage from './pages/DayPage'
-import ExerciseProgressPage from './pages/ExerciseProgressPage'
+import ExercisesPage from './pages/ExercisesPage'
 import LoginPage from './pages/LoginPage'
+import MovementProgressPage from './pages/MovementProgressPage'
+import PhotosPage from './pages/PhotosPage'
 import ProgressPage from './pages/ProgressPage'
 import SettingsPage from './pages/SettingsPage'
 import SetupNotice from './pages/SetupNotice'
@@ -34,9 +36,11 @@ export default function App() {
           <Routes>
             <Route path="/" element={<WeekPage />} />
             <Route path="/day/:dow" element={<DayPage />} />
+            <Route path="/exercises" element={<ExercisesPage />} />
+            <Route path="/exercises/:movementId" element={<MovementProgressPage />} />
             <Route path="/body" element={<BodyPage />} />
+            <Route path="/photos" element={<PhotosPage />} />
             <Route path="/progress" element={<ProgressPage />} />
-            <Route path="/progress/:exerciseId" element={<ExerciseProgressPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

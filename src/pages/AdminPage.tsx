@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import ImageCropper from '../components/ImageCropper'
 import { ChevronLeft, Plus, Trash } from '../components/Icons'
 import { ErrorState, Loading, SaveIndicator } from '../components/Status'
@@ -8,16 +8,19 @@ import { useCute } from '../hooks/useCute'
 import { useSaveQueue } from '../hooks/useSaveQueue'
 import {
   addMessage,
+  cancelConnection,
   deleteMessage,
   deleteStreakImage,
   fetchMessages,
   fetchStreakImages,
+  requestConnection,
+  respondToConnection,
   signImageUrl,
   updateMessage,
   uploadStreakImage,
 } from '../lib/api'
-import { STATE_HINTS, STATE_LABELS } from '../lib/streak'
 import { errorMessage } from '../lib/format'
+import { STATE_HINTS, STATE_LABELS } from '../lib/streak'
 import { DAY_NAMES, formatShortDate, todayISO } from '../lib/weeks'
 import type { LoveMessage, StreakImage, StreakState } from '../types'
 
@@ -49,7 +52,7 @@ function Thumb({ image, onDelete }: { image: StreakImage; onDelete: () => void }
 }
 
 export default function AdminPage() {
-  const { loading, isAdmin, targets } = useCute()
+  const { loading, partners, incoming, outgoing, reload } = useCute()
   const save = useSaveQueue()
   const fileRef = useRef<HTMLInputElement | null>(null)
 
@@ -57,6 +60,9 @@ export default function AdminPage() {
   const [images, setImages] = useState<StreakImage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+
+  const [email, setEmail] = useState('')
+  const [partnerLabel, setPartnerLabel] = useState('')
 
   const [body, setBody] = useState('')
   const [scope, setScope] = useState<'any' | 'weekday' | 'date'>('any')
@@ -67,13 +73,13 @@ export default function AdminPage() {
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [caption, setCaption] = useState('')
 
-  const target = targets[0] ?? null
+  const partner = partners[0] ?? null
 
   useEffect(() => {
-    if (!target) return
+    if (!partner) return
     let alive = true
     setError(null)
-    Promise.all([fetchMessages(target.target_user_id), fetchStreakImages(target.target_user_id)])
+    Promise.all([fetchMessages(partner.userId), fetchStreakImages(partner.userId)])
       .then(([loadedMessages, loadedImages]) => {
         if (!alive) return
         setMessages(loadedMessages)
@@ -85,18 +91,49 @@ export default function AdminPage() {
     return () => {
       alive = false
     }
-  }, [target, reloadKey])
+  }, [partner, reloadKey])
 
-  if (loading) return <Loading />
-  if (!isAdmin || !target) return <Navigate to="/" replace />
+  const header = (
+    <header className="top top--sticky">
+      <Link to="/" className="icon-btn" aria-label="Back to the week">
+        <ChevronLeft />
+      </Link>
+      <span className="top__title">{partner ? `For ${partner.myLabelForThem ?? 'your partner'}` : 'Partner'}</span>
+      <SaveIndicator status={save.status} />
+    </header>
+  )
+
+  async function handleRequest(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const address = email.trim()
+    if (!address) return
+    setError(null)
+    const done = await save.run(() => requestConnection(address, partnerLabel.trim() || null))
+    if (done !== undefined) {
+      setEmail('')
+      setPartnerLabel('')
+      reload()
+    }
+  }
+
+  async function handleRespond(connectionId: string, accept: boolean) {
+    const label = accept ? window.prompt('What do you call them? (shows as their name in your app)') : null
+    const done = await save.run(() => respondToConnection(connectionId, accept, label?.trim() || null))
+    if (done !== undefined) reload()
+  }
+
+  async function handleCancel(connectionId: string) {
+    const done = await save.run(() => cancelConnection(connectionId))
+    if (done !== undefined) reload()
+  }
 
   async function handleAddMessage(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const text = body.trim()
-    if (!text || !target) return
+    if (!text || !partner) return
     setBody('')
     const created = await save.run(() =>
-      addMessage(target.target_user_id, text, {
+      addMessage(partner.userId, text, {
         day_of_week: scope === 'weekday' ? weekday : null,
         show_date: scope === 'date' ? date : null,
       }),
@@ -126,9 +163,9 @@ export default function AdminPage() {
     const state = pendingState
     setPendingFile(null)
     setPendingState(null)
-    if (!state || !target) return
+    if (!state || !partner) return
     const file = new File([blob], `${state}.jpg`, { type: 'image/jpeg' })
-    const uploaded = await save.run(() => uploadStreakImage(target.target_user_id, state, file, caption.trim() || null))
+    const uploaded = await save.run(() => uploadStreakImage(partner.userId, state, file, caption.trim() || null))
     if (uploaded) setImages(list => [...list, uploaded])
   }
 
@@ -138,17 +175,91 @@ export default function AdminPage() {
     void save.run(() => deleteStreakImage(image))
   }
 
+  if (loading) {
+    return (
+      <div className="page">
+        {header}
+        <Loading />
+      </div>
+    )
+  }
+
+  // ---- Not connected to anyone yet ----
+  if (!partner) {
+    return (
+      <div className="page">
+        {header}
+        {save.error && (
+          <div className="banner banner--error" role="alert">
+            {save.error}
+          </div>
+        )}
+
+        {incoming.length > 0 && (
+          <section className="card">
+            <h2 className="card__title">Waiting for your answer</h2>
+            {incoming.map(request => (
+              <div key={request.id} className="request-row">
+                <span>{request.requester_label ? `${request.requester_label} wants to connect` : 'Someone wants to connect'}</span>
+                <button type="button" className="btn btn--accent btn--small" onClick={() => void handleRespond(request.id, true)}>
+                  Accept
+                </button>
+                <button type="button" className="btn btn--small" onClick={() => void handleRespond(request.id, false)}>
+                  Decline
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
+
+        <section className="card">
+          <h2 className="card__title">Connect with someone</h2>
+          <p className="card__sub">
+            Once you are connected you can both leave messages and pictures in each other's app. Nobody else ever sees them.
+          </p>
+          <form className="message-form" onSubmit={handleRequest}>
+            <label className="label">
+              Their email
+              <input className="field" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+            </label>
+            <label className="label">
+              What you call them
+              <input className="field" maxLength={40} value={partnerLabel} onChange={e => setPartnerLabel(e.target.value)} placeholder="e.g. Neven" />
+            </label>
+            <button type="submit" className="btn btn--accent" disabled={!email.trim()}>
+              Send request
+            </button>
+          </form>
+        </section>
+
+        {outgoing.length > 0 && (
+          <section className="card">
+            <h2 className="card__title">Sent</h2>
+            {outgoing.map(request => (
+              <div key={request.id} className="request-row">
+                <span>Waiting for {request.requester_label ?? 'them'} to accept</span>
+                <button type="button" className="btn btn--small" onClick={() => void handleCancel(request.id)}>
+                  Cancel
+                </button>
+              </div>
+            ))}
+          </section>
+        )}
+      </div>
+    )
+  }
+
+  // ---- Connected ----
   return (
     <div className="page">
-      <header className="top top--sticky">
-        <Link to="/" className="icon-btn" aria-label="Back to the week">
-          <ChevronLeft />
-        </Link>
-        <span className="top__title">For {target.display_name}</span>
-        <SaveIndicator status={save.status} />
-      </header>
+      {header}
 
       {error && <ErrorState message={error} onRetry={() => setReloadKey(k => k + 1)} />}
+      {save.error && (
+        <div className="banner banner--error" role="alert">
+          {save.error}
+        </div>
+      )}
 
       <input
         ref={fileRef}
@@ -206,7 +317,7 @@ export default function AdminPage() {
 
       <section className="card">
         <h2 className="card__title">Messages</h2>
-        <p className="card__sub">He sees one a day, on the week screen.</p>
+        <p className="card__sub">They see one a day, on their week screen.</p>
 
         <form className="message-form" onSubmit={handleAddMessage}>
           <input
@@ -214,7 +325,7 @@ export default function AdminPage() {
             value={body}
             onChange={e => setBody(e.target.value)}
             maxLength={300}
-            placeholder="Write something for him"
+            placeholder="Write something for them"
             aria-label="Message"
           />
           <div className="chips" role="group" aria-label="When to show it">

@@ -1,11 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { fetchAdminTargets, fetchIsAdmin, fetchMyMessages, fetchStreakImages } from '../lib/api'
+import { fetchConnections, fetchMyMessages, fetchStreakImages } from '../lib/api'
 import { todayDayOfWeek, todayISO } from '../lib/weeks'
-import type { AdminTarget, LoveMessage, StreakImage } from '../types'
+import type { Connection, LoveMessage, StreakImage } from '../types'
+
+export type Partner = {
+  connectionId: string
+  userId: string
+  /** What you call them. */
+  myLabelForThem: string | null
+  /** What they call you — used for the greeting in your app. */
+  theirLabelForYou: string | null
+}
 
 type Decoration = {
-  /** How the app greets this user, set by the person who decorates it. */
   displayName: string
   messages: LoveMessage[]
   images: StreakImage[]
@@ -13,49 +21,70 @@ type Decoration = {
 
 type CuteContextValue = {
   loading: boolean
-  /** True when this account may write messages and upload pictures for someone else. */
-  isAdmin: boolean
-  /** People whose app this account decorates. */
-  targets: AdminTarget[]
-  /** Set when somebody decorates THIS account's app. */
+  partners: Partner[]
+  /** Requests waiting for your answer. */
+  incoming: Connection[]
+  /** Requests you sent that have not been answered. */
+  outgoing: Connection[]
+  /** Set when a partner has put something in your app. */
   decoration: Decoration | null
   reload: () => void
 }
 
-const CuteContext = createContext<CuteContextValue>({
+const empty: Omit<CuteContextValue, 'reload'> = {
   loading: true,
-  isAdmin: false,
-  targets: [],
+  partners: [],
+  incoming: [],
+  outgoing: [],
   decoration: null,
-  reload: () => {},
-})
+}
+
+const CuteContext = createContext<CuteContextValue>({ ...empty, reload: () => {} })
 
 export function CuteProvider({ userId, children }: { userId: string; children: ReactNode }) {
-  const [value, setValue] = useState<Omit<CuteContextValue, 'reload'>>({
-    loading: true,
-    isAdmin: false,
-    targets: [],
-    decoration: null,
-  })
+  const [value, setValue] = useState(empty)
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const [admin, links] = await Promise.all([fetchIsAdmin(userId), fetchAdminTargets()])
-        const targets = links.filter(link => link.admin_id === userId)
-        const decorators = links.filter(link => link.target_user_id === userId)
+        const connections = await fetchConnections()
+
+        const partners: Partner[] = connections
+          .filter(c => c.status === 'accepted')
+          .map(c =>
+            c.requester_id === userId
+              ? {
+                  connectionId: c.id,
+                  userId: c.addressee_id,
+                  myLabelForThem: c.requester_label,
+                  theirLabelForYou: c.addressee_label,
+                }
+              : {
+                  connectionId: c.id,
+                  userId: c.requester_id,
+                  myLabelForThem: c.addressee_label,
+                  theirLabelForYou: c.requester_label,
+                },
+          )
+
+        const incoming = connections.filter(c => c.status === 'pending' && c.addressee_id === userId)
+        const outgoing = connections.filter(c => c.status === 'pending' && c.requester_id === userId)
 
         let decoration: Decoration | null = null
-        if (decorators.length > 0) {
+        if (partners.length > 0) {
           const [messages, images] = await Promise.all([fetchMyMessages(), fetchStreakImages()])
-          decoration = { displayName: decorators[0].display_name, messages, images }
+          const mine = images.filter(image => image.target_user_id === userId)
+          if (messages.length > 0 || mine.length > 0) {
+            decoration = { displayName: partners[0].theirLabelForYou ?? 'you', messages, images: mine }
+          }
         }
-        if (alive) setValue({ loading: false, isAdmin: admin, targets, decoration })
+
+        if (alive) setValue({ loading: false, partners, incoming, outgoing, decoration })
       } catch {
         // These are extras: if they fail, the app works exactly as it does for anyone else.
-        if (alive) setValue({ loading: false, isAdmin: false, targets: [], decoration: null })
+        if (alive) setValue({ ...empty, loading: false })
       }
     })()
     return () => {

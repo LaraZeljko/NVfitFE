@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Logo, Trash } from '../components/Icons'
 import LineChart from '../components/LineChart'
 import { ErrorState, Loading, OfflineBanner, SaveIndicator } from '../components/Status'
@@ -133,6 +134,9 @@ export default function BodyPage() {
 
       <p className="eyebrow">Last {RANGE_DAYS} days</p>
       <h1 className="h1">Body</h1>
+      <p className="photo-link">
+        <Link to="/photos">Progress photos →</Link>
+      </p>
 
       {error && <ErrorState message={error} onRetry={() => setReloadKey(k => k + 1)} />}
       {!entries && !error && <Loading />}

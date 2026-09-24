@@ -14,31 +14,32 @@ import { useTimer } from '../hooks/useTimer'
 import {
   addExercise,
   addSet,
-  deleteExercise,
   deleteSet,
-  fetchCatalog,
   fetchDayNote,
   fetchDays,
   fetchExerciseNotes,
   fetchExercises,
+  fetchMovements,
   fetchSets,
+  findOrAddMovement,
   logSession,
-  renameExercise,
+  removeExerciseFromDay,
   saveDayNote,
   saveExerciseNote,
   saveSet,
   saveSets,
   setExercisePosition,
   updateDayTitle,
+  updateMovement,
 } from '../lib/api'
 import { errorMessage, hasValues } from '../lib/format'
 import { DAY_NAMES, addWeeks, currentWeekStart, isValidWeekStart, todayISO } from '../lib/weeks'
-import type { Exercise, ExerciseSet, SetValues, TrainingDay } from '../types'
+import type { Exercise, ExerciseSet, Movement, SetValues, TrainingDay } from '../types'
 
 // How many weeks back we look for the "last time" values of each exercise.
 const HISTORY_WEEKS = 12
 const MAX_SETS = 20
-const CATALOG_ID = 'exercise-catalog'
+const LIBRARY_ID = 'movement-library'
 
 const bySetNumber = (a: ExerciseSet, b: ExerciseSet) => a.set_number - b.set_number
 
@@ -55,11 +56,11 @@ export default function DayPage() {
   const [day, setDay] = useState<TrainingDay | null>(null)
   const [title, setTitle] = useState('')
   const [exercises, setExercises] = useState<Exercise[] | null>(null)
+  const [movements, setMovements] = useState<Movement[]>([])
   const [sets, setSets] = useState<ExerciseSet[]>([])
   const [setsKey, setSetsKey] = useState('')
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [dayNote, setDayNote] = useState('')
-  const [catalog, setCatalog] = useState<string[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [newName, setNewName] = useState('')
@@ -73,22 +74,19 @@ export default function DayPage() {
   // Today's training session is written once per visit, not on every saved set.
   const sessionLoggedRef = useRef(false)
 
-  // The catalog of common exercise names — read once, used by the suggestions.
+  // Your library, offered when adding to this day.
   useEffect(() => {
     let alive = true
-    fetchCatalog()
+    fetchMovements()
       .then(rows => {
-        if (alive) setCatalog(rows.map(row => row.name))
+        if (alive) setMovements(rows)
       })
-      .catch(() => {
-        // Suggestions are optional; typing a name always works.
-      })
+      .catch(() => undefined)
     return () => {
       alive = false
     }
-  }, [])
+  }, [reloadKey])
 
-  // The day and its exercises
   useEffect(() => {
     if (!validDow) return
     let alive = true
@@ -114,7 +112,6 @@ export default function DayPage() {
     }
   }, [dow, validDow, reloadKey])
 
-  // Sets for the selected week plus a few weeks back, and this week's notes
   const loadedDayId = exercises ? day?.id : undefined
   useEffect(() => {
     const list = exercisesRef.current
@@ -142,9 +139,16 @@ export default function DayPage() {
     }
   }, [loadedDayId, week, reloadKey])
 
+  const movementById = useMemo(() => new Map(movements.map(movement => [movement.id, movement])), [movements])
+
+  function nameOf(exercise: Exercise) {
+    return movementById.get(exercise.movement_id)?.name ?? exercise.name
+  }
+
   const setsByExercise = useMemo(() => {
     const map = new Map<string, ExerciseSet[]>()
     for (const set of sets) {
+      if (!set.exercise_id) continue
       const list = map.get(set.exercise_id)
       if (list) list.push(set)
       else map.set(set.exercise_id, [set])
@@ -178,58 +182,55 @@ export default function DayPage() {
 
   // ---- Sets ----
 
-  function handleSaveSet(exerciseId: string, setNumber: number, values: SetValues) {
+  function handleSaveSet(exercise: Exercise, setNumber: number, values: SetValues) {
     const w = week
     setSets(prev =>
-      prev.map(s => (s.exercise_id === exerciseId && s.week_start === w && s.set_number === setNumber ? { ...s, ...values } : s)),
+      prev.map(s => (s.exercise_id === exercise.id && s.week_start === w && s.set_number === setNumber ? { ...s, ...values } : s)),
     )
-    void save.run(() => saveSet(exerciseId, w, setNumber, values))
+    void save.run(() => saveSet({ exercise, weekStart: w, setNumber }, values))
 
     if (w === thisWeek && hasValues(values)) {
-      // Today counts as trained — this is what the streak is built from.
       if (day && !sessionLoggedRef.current) {
         sessionLoggedRef.current = true
         const dayId = day.id
         void save.run(() => logSession(todayISO(), dayId))
       }
-      // A finished set starts the rest countdown.
       if (settings && settings.rest_seconds > 0) timer.start(settings.rest_seconds, 'rest')
     }
   }
 
-  async function handleAddSet(exerciseId: string) {
+  async function handleAddSet(exercise: Exercise) {
     const w = week
-    const next = (currentSets(exerciseId).at(-1)?.set_number ?? 0) + 1
+    const next = (currentSets(exercise.id).at(-1)?.set_number ?? 0) + 1
     if (next > MAX_SETS) return
-    const row = await save.run(() => addSet(exerciseId, w, next))
+    const row = await save.run(() => addSet({ exercise, weekStart: w, setNumber: next }))
     if (row) setSets(prev => (prev.some(s => s.id === row.id) ? prev : [...prev, row]))
   }
 
-  function handleDeleteSet(exerciseId: string, set: ExerciseSet) {
+  function handleDeleteSet(exercise: Exercise, set: ExerciseSet) {
     if (hasValues(set) && !window.confirm(`Delete set ${set.set_number}?`)) return
     const w = week
-    const last = currentSets(exerciseId).at(-1)?.set_number ?? set.set_number
+    const last = currentSets(exercise.id).at(-1)?.set_number ?? set.set_number
     setSets(prev =>
       prev
         .filter(s => s.id !== set.id)
         .map(s =>
-          s.exercise_id === exerciseId && s.week_start === w && s.set_number > set.set_number ? { ...s, set_number: s.set_number - 1 } : s,
+          s.exercise_id === exercise.id && s.week_start === w && s.set_number > set.set_number
+            ? { ...s, set_number: s.set_number - 1 }
+            : s,
         ),
     )
-    void save.run(() => deleteSet(exerciseId, w, set.set_number, last))
+    void save.run(() => deleteSet(exercise.id, w, set.set_number, last))
   }
 
-  // Weights are copied over, reps are left empty (last time's reps show as placeholders).
-  async function handleCopyPrevious(exerciseId: string) {
-    const previous = previousSets(exerciseId)
+  async function handleCopyPrevious(exercise: Exercise) {
+    const previous = previousSets(exercise.id)
     if (!previous) return
     const w = week
     const rows = await save.run(() =>
-      saveSets(
-        previous.sets.map((s, i) => ({ exercise_id: exerciseId, week_start: w, set_number: i + 1, weight_kg: s.weight_kg, reps: null })),
-      ),
+      saveSets(previous.sets.map((s, i) => ({ exercise, weekStart: w, setNumber: i + 1, weight_kg: s.weight_kg, reps: null }))),
     )
-    if (rows) setSets(prev => [...prev.filter(s => !(s.exercise_id === exerciseId && s.week_start === w)), ...rows])
+    if (rows) setSets(prev => [...prev.filter(s => !(s.exercise_id === exercise.id && s.week_start === w)), ...rows])
   }
 
   // ---- Notes ----
@@ -249,7 +250,7 @@ export default function DayPage() {
     void save.run(() => saveDayNote(dayId, w, trimmed))
   }
 
-  // ---- Exercises ----
+  // ---- Exercises in this day ----
 
   async function handleAddExercise(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -257,14 +258,19 @@ export default function DayPage() {
     if (!name || !day || !exercises) return
     const position = exercises.reduce((max, x) => Math.max(max, x.position), -1) + 1
     setNewName('')
-    const created = await save.run(() => addExercise(day.id, name, position))
+    const created = await save.run(async () => {
+      const movement = await findOrAddMovement(name)
+      setMovements(list => (list.some(m => m.id === movement.id) ? list : [...list, movement]))
+      return addExercise(day.id, movement, position)
+    })
     if (created) setExercises(list => (list ? [...list, created] : [created]))
     else setNewName(name)
   }
 
+  /** Renaming here renames the exercise everywhere, because it is one exercise. */
   function handleRename(exercise: Exercise, name: string) {
-    setExercises(list => list?.map(x => (x.id === exercise.id ? { ...x, name } : x)) ?? list)
-    void save.run(() => renameExercise(exercise.id, name))
+    setMovements(list => list.map(m => (m.id === exercise.movement_id ? { ...m, name } : m)))
+    void save.run(() => updateMovement(exercise.movement_id, { name }))
   }
 
   function handleMove(index: number, direction: -1 | 1) {
@@ -282,10 +288,12 @@ export default function DayPage() {
     })
   }
 
-  function handleDeleteExercise(exercise: Exercise) {
+  /** Takes it out of this day only — the history stays under the exercise. */
+  function handleRemoveFromDay(exercise: Exercise) {
+    if (!window.confirm(`Remove "${nameOf(exercise)}" from ${DAY_NAMES[dow - 1]}? Everything you logged stays in its history.`)) return
     setExercises(list => list?.filter(x => x.id !== exercise.id) ?? list)
     setSets(prev => prev.filter(s => s.exercise_id !== exercise.id))
-    void save.run(() => deleteExercise(exercise.id))
+    void save.run(() => removeExerciseFromDay(exercise.id))
   }
 
   function handleTitleBlur() {
@@ -309,6 +317,8 @@ export default function DayPage() {
   if (!validDow) return <Navigate to="/" replace />
 
   const refreshing = setsKey !== `${day?.id}|${week}`
+  const used = new Set((exercises ?? []).map(e => e.movement_id))
+  const suggestions = movements.filter(movement => !used.has(movement.id))
 
   return (
     <div className="page">
@@ -377,12 +387,12 @@ export default function DayPage() {
 
           <div className={`exercise-list${refreshing ? ' is-refreshing' : ''}`} aria-busy={refreshing}>
             {exercises.length === 0 && (
-              <p className="empty">No exercises for this day yet. Add the first one below, or keep it as a rest day.</p>
+              <p className="empty">Nothing planned for this day. Add an exercise below, or keep it as a rest day.</p>
             )}
             {exercises.map((exercise, index) => (
               <ExerciseCard
                 key={exercise.id}
-                exercise={exercise}
+                exercise={{ ...exercise, name: nameOf(exercise) }}
                 index={index}
                 isFirst={index === 0}
                 isLast={index === exercises.length - 1}
@@ -391,15 +401,16 @@ export default function DayPage() {
                 maxSets={MAX_SETS}
                 isRecord={records.get(exercise.id) ?? false}
                 note={notes[exercise.id] ?? ''}
-                catalogId={CATALOG_ID}
-                onSaveSet={(setNumber, values) => handleSaveSet(exercise.id, setNumber, values)}
-                onAddSet={() => void handleAddSet(exercise.id)}
-                onDeleteSet={set => handleDeleteSet(exercise.id, set)}
-                onCopyPrevious={() => void handleCopyPrevious(exercise.id)}
+                catalogId={LIBRARY_ID}
+                progressHref={`/exercises/${exercise.movement_id}`}
+                onSaveSet={(setNumber, values) => handleSaveSet(exercise, setNumber, values)}
+                onAddSet={() => void handleAddSet(exercise)}
+                onDeleteSet={set => handleDeleteSet(exercise, set)}
+                onCopyPrevious={() => void handleCopyPrevious(exercise)}
                 onSaveNote={note => handleSaveNote(exercise.id, note)}
                 onRename={name => handleRename(exercise, name)}
                 onMove={direction => handleMove(index, direction)}
-                onDelete={() => handleDeleteExercise(exercise)}
+                onDelete={() => handleRemoveFromDay(exercise)}
               />
             ))}
           </div>
@@ -407,21 +418,24 @@ export default function DayPage() {
           <form className="add-exercise" onSubmit={handleAddExercise}>
             <input
               className="field"
-              list={CATALOG_ID}
+              list={LIBRARY_ID}
               value={newName}
               onChange={e => setNewName(e.target.value)}
-              placeholder={exercises.length ? 'New exercise' : 'e.g. Incline dumbbell press'}
+              placeholder="Add from your library, or type a new one"
               maxLength={80}
-              aria-label="New exercise name"
+              aria-label="Exercise to add to this day"
             />
             <button type="submit" className="btn btn--accent" disabled={!newName.trim()}>
               <Plus /> Add
             </button>
           </form>
+          <p className="muted add-hint">
+            New names are added to <Link to="/exercises">your library</Link> automatically.
+          </p>
 
-          <datalist id={CATALOG_ID}>
-            {catalog.map(name => (
-              <option key={name} value={name} />
+          <datalist id={LIBRARY_ID}>
+            {suggestions.map(movement => (
+              <option key={movement.id} value={movement.name} />
             ))}
           </datalist>
         </>

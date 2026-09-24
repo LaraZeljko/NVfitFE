@@ -26,7 +26,7 @@ export default function WeekPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const week = currentWeekStart()
   const today = todayDayOfWeek()
-  const { isAdmin, decoration } = useCute()
+  const { partners, incoming, decoration } = useCute()
 
   useEffect(() => {
     let alive = true
@@ -57,6 +57,7 @@ export default function WeekPage() {
   }
 
   const streak = data ? computeStreak(data.sessions, restWeekdays(data.days, data.exercises)) : null
+  const partnerBadge = incoming.length > 0
 
   return (
     <div className="page page--tabs">
@@ -67,11 +68,14 @@ export default function WeekPage() {
             NV<b>fit</b>
           </span>
         </div>
-        {isAdmin && (
-          <Link to="/admin" className="icon-btn" aria-label="Messages and pictures" title="Messages and pictures">
-            <Heart />
-          </Link>
-        )}
+        <Link
+          to="/admin"
+          className={`icon-btn${partnerBadge ? ' has-badge' : ''}`}
+          aria-label={partnerBadge ? 'Partner — a request is waiting' : partners.length > 0 ? 'Messages and pictures' : 'Connect with your partner'}
+          title="Partner"
+        >
+          <Heart />
+        </Link>
         <Link to="/settings" className="icon-btn" aria-label="Settings" title="Settings">
           <Gear />
         </Link>

@@ -20,8 +20,9 @@ type Props = {
   /** True when this week's top weight beats every earlier week. */
   isRecord: boolean
   note: string
-  /** id of the <datalist> with the exercise catalog */
+  /** id of the <datalist> with your exercise library */
   catalogId: string
+  progressHref: string
   onSaveSet: (setNumber: number, values: SetValues) => void
   onAddSet: () => void
   onDeleteSet: (set: ExerciseSet) => void
@@ -29,11 +30,12 @@ type Props = {
   onSaveNote: (note: string) => void
   onRename: (name: string) => void
   onMove: (direction: -1 | 1) => void
+  /** Removes it from this day; the history stays with the exercise. */
   onDelete: () => void
 }
 
 export default function ExerciseCard(props: Props) {
-  const { exercise, index, isFirst, isLast, sets, previous, maxSets, isRecord, note, catalogId } = props
+  const { exercise, index, isFirst, isLast, sets, previous, maxSets, isRecord, note, catalogId, progressHref } = props
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [nameDraft, setNameDraft] = useState(exercise.name)
@@ -46,16 +48,16 @@ export default function ExerciseCard(props: Props) {
     if (note !== '') setNoteOpen(true)
   }, [note])
 
+  useEffect(() => {
+    setNameDraft(exercise.name)
+  }, [exercise.name])
+
   function submitRename(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const name = nameDraft.trim()
     if (!name) return
     if (name !== exercise.name) props.onRename(name)
     setEditing(false)
-  }
-
-  function confirmDelete() {
-    if (window.confirm(`Delete "${exercise.name}" and all of its logged sets?`)) props.onDelete()
   }
 
   function commitNote() {
@@ -118,6 +120,7 @@ export default function ExerciseCard(props: Props) {
 
       {menuOpen && !editing && (
         <div className="exercise__menu">
+          <Link to={progressHref}>See progress</Link>
           <button
             type="button"
             onClick={() => {
@@ -126,7 +129,7 @@ export default function ExerciseCard(props: Props) {
               setMenuOpen(false)
             }}
           >
-            Rename
+            Rename everywhere
           </button>
           <button type="button" disabled={isFirst} onClick={() => props.onMove(-1)}>
             Move up
@@ -134,9 +137,8 @@ export default function ExerciseCard(props: Props) {
           <button type="button" disabled={isLast} onClick={() => props.onMove(1)}>
             Move down
           </button>
-          <Link to={`/progress/${exercise.id}`}>Progress</Link>
-          <button type="button" className="is-danger" onClick={confirmDelete}>
-            Delete
+          <button type="button" className="is-danger" onClick={props.onDelete}>
+            Remove from this day
           </button>
         </div>
       )}

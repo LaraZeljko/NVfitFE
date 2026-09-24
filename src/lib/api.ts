@@ -1,20 +1,22 @@
 import { supabase } from './supabase'
 import type {
-  AdminTarget,
   BodyEntry,
   BodyValues,
   CatalogExercise,
+  Connection,
   DayNote,
   Exercise,
   ExerciseNote,
   ExerciseSet,
   LoveMessage,
+  Movement,
+  MovementSummary,
+  ProgressPhoto,
   SetValues,
   StreakImage,
   StreakState,
   TrainingDay,
   UserSettings,
-  WeeklySummary,
   WorkoutSession,
 } from '../types'
 
@@ -26,15 +28,19 @@ function unwrap<T>({ data, error }: Response<T>): T {
 }
 
 const DAY_COLUMNS = 'id, day_of_week, title'
-const EXERCISE_COLUMNS = 'id, day_id, name, position'
-const SET_COLUMNS = 'id, exercise_id, week_start, set_number, weight_kg, reps'
-const SUMMARY_COLUMNS = 'exercise_id, week_start, sets_count, top_weight_kg, volume_kg, total_reps'
+const MOVEMENT_COLUMNS = 'id, name, muscle_group, is_favourite, archived_at'
+const EXERCISE_COLUMNS = 'id, day_id, movement_id, name, position'
+const SET_COLUMNS = 'id, exercise_id, movement_id, day_id, week_start, set_number, weight_kg, reps'
+const SUMMARY_COLUMNS = 'movement_id, week_start, sets_count, day_count, top_weight_kg, volume_kg, total_reps'
 const SETTINGS_COLUMNS = 'user_id, set_seconds, rest_seconds, cute_mode'
 const BODY_COLUMNS = 'id, entry_date, weight_kg, calories, protein_g, note'
+const PHOTO_COLUMNS = 'id, taken_on, storage_path, note, weight_kg'
+const CONNECTION_COLUMNS = 'id, requester_id, addressee_id, status, requester_label, addressee_label, created_at'
 const MESSAGE_COLUMNS = 'id, target_user_id, day_of_week, show_date, body, is_active'
 const IMAGE_COLUMNS = 'id, target_user_id, state, storage_path, caption'
 const SET_CONFLICT = 'exercise_id,week_start,set_number'
 const IMAGE_BUCKET = 'nvfit-images'
+const PHOTO_BUCKET = 'nvfit-photos'
 
 const toNumber = (value: unknown) => (value === null || value === undefined ? null : Number(value))
 
@@ -42,10 +48,11 @@ function normalizeSet(row: ExerciseSet): ExerciseSet {
   return { ...row, weight_kg: toNumber(row.weight_kg), reps: toNumber(row.reps) }
 }
 
-function normalizeSummary(row: WeeklySummary): WeeklySummary {
+function normalizeSummary(row: MovementSummary): MovementSummary {
   return {
     ...row,
     sets_count: Number(row.sets_count),
+    day_count: Number(row.day_count),
     top_weight_kg: toNumber(row.top_weight_kg),
     volume_kg: Number(row.volume_kg),
     total_reps: Number(row.total_reps),
@@ -67,7 +74,6 @@ export async function fetchDays(): Promise<TrainingDay[]> {
   const days = unwrap<TrainingDay[]>(await supabase.from('training_days').select(DAY_COLUMNS).order('day_of_week'))
   if (days.length === 7) return days
 
-  // Fallback for accounts created before the auth trigger existed.
   const missing = [1, 2, 3, 4, 5, 6, 7]
     .filter(dow => !days.some(day => day.day_of_week === dow))
     .map(day_of_week => ({ day_of_week }))
@@ -79,7 +85,43 @@ export async function updateDayTitle(dayId: string, title: string) {
   unwrap(await supabase.from('training_days').update({ title }).eq('id', dayId))
 }
 
-// ---- Exercises ----
+// ---- Movements (your own library) ----
+
+export async function fetchMovements(includeArchived = false): Promise<Movement[]> {
+  const query = supabase.from('movements').select(MOVEMENT_COLUMNS)
+  const filtered = includeArchived ? query : query.is('archived_at', null)
+  return unwrap<Movement[]>(await filtered.order('is_favourite', { ascending: false }).order('name'))
+}
+
+export async function addMovement(name: string, muscleGroup: string | null = null): Promise<Movement> {
+  return unwrap<Movement>(
+    await supabase.from('movements').insert({ name, muscle_group: muscleGroup }).select(MOVEMENT_COLUMNS).single(),
+  )
+}
+
+/** Adds it, or returns the one already in the library with that name. */
+export async function findOrAddMovement(name: string): Promise<Movement> {
+  const existing = unwrap<Movement[]>(await supabase.from('movements').select(MOVEMENT_COLUMNS).ilike('name', name).limit(1))
+  if (existing[0]) {
+    if (existing[0].archived_at) await updateMovement(existing[0].id, { archived_at: null })
+    return { ...existing[0], archived_at: null }
+  }
+  return addMovement(name)
+}
+
+export async function updateMovement(
+  movementId: string,
+  values: Partial<Pick<Movement, 'name' | 'muscle_group' | 'is_favourite' | 'archived_at'>>,
+) {
+  unwrap(await supabase.from('movements').update(values).eq('id', movementId))
+}
+
+/** Deletes the movement and everything ever logged under it. */
+export async function deleteMovement(movementId: string) {
+  unwrap(await supabase.from('movements').delete().eq('id', movementId))
+}
+
+// ---- Exercises (a movement placed in a day) ----
 
 export async function fetchExercises(dayId?: string): Promise<Exercise[]> {
   const query = supabase.from('exercises').select(EXERCISE_COLUMNS)
@@ -87,25 +129,22 @@ export async function fetchExercises(dayId?: string): Promise<Exercise[]> {
   return unwrap<Exercise[]>(await filtered.order('position').order('created_at'))
 }
 
-export async function fetchExercise(exerciseId: string): Promise<Exercise | null> {
-  return unwrap<Exercise | null>(await supabase.from('exercises').select(EXERCISE_COLUMNS).eq('id', exerciseId).maybeSingle())
-}
-
-export async function addExercise(dayId: string, name: string, position: number): Promise<Exercise> {
+export async function addExercise(dayId: string, movement: Movement, position: number): Promise<Exercise> {
   return unwrap<Exercise>(
-    await supabase.from('exercises').insert({ day_id: dayId, name, position }).select(EXERCISE_COLUMNS).single(),
+    await supabase
+      .from('exercises')
+      .insert({ day_id: dayId, movement_id: movement.id, name: movement.name, position })
+      .select(EXERCISE_COLUMNS)
+      .single(),
   )
-}
-
-export async function renameExercise(exerciseId: string, name: string) {
-  unwrap(await supabase.from('exercises').update({ name }).eq('id', exerciseId))
 }
 
 export async function setExercisePosition(exerciseId: string, position: number) {
   unwrap(await supabase.from('exercises').update({ position }).eq('id', exerciseId))
 }
 
-export async function deleteExercise(exerciseId: string) {
+/** Takes the movement out of that day. The logged sets stay in its history. */
+export async function removeExerciseFromDay(exerciseId: string) {
   unwrap(await supabase.from('exercises').delete().eq('id', exerciseId))
 }
 
@@ -130,32 +169,62 @@ export async function fetchSets(exerciseIds: string[], fromWeek: string, toWeek:
   return rows.map(normalizeSet)
 }
 
-/** Adds an empty set. Returns null if it already exists (double tap). */
-export async function addSet(exerciseId: string, weekStart: string, setNumber: number): Promise<ExerciseSet | null> {
+/** Every set ever logged for one movement, whichever day it was done on. */
+export async function fetchMovementSets(movementId: string, fromWeek: string, toWeek: string): Promise<ExerciseSet[]> {
   const rows = unwrap<ExerciseSet[]>(
     await supabase
       .from('exercise_sets')
-      .upsert({ exercise_id: exerciseId, week_start: weekStart, set_number: setNumber }, { onConflict: SET_CONFLICT, ignoreDuplicates: true })
+      .select(SET_COLUMNS)
+      .eq('movement_id', movementId)
+      .gte('week_start', fromWeek)
+      .lte('week_start', toWeek)
+      .order('week_start')
+      .order('set_number'),
+  )
+  return rows.map(normalizeSet)
+}
+
+type SetKey = { exercise: Exercise; weekStart: string; setNumber: number }
+
+function setIdentity({ exercise, weekStart, setNumber }: SetKey) {
+  return {
+    exercise_id: exercise.id,
+    movement_id: exercise.movement_id,
+    day_id: exercise.day_id,
+    week_start: weekStart,
+    set_number: setNumber,
+  }
+}
+
+/** Adds an empty set. Returns null if it already exists (double tap). */
+export async function addSet(key: SetKey): Promise<ExerciseSet | null> {
+  const rows = unwrap<ExerciseSet[]>(
+    await supabase
+      .from('exercise_sets')
+      .upsert(setIdentity(key), { onConflict: SET_CONFLICT, ignoreDuplicates: true })
       .select(SET_COLUMNS),
   )
   return rows[0] ? normalizeSet(rows[0]) : null
 }
 
-export async function saveSet(exerciseId: string, weekStart: string, setNumber: number, values: SetValues): Promise<ExerciseSet> {
+export async function saveSet(key: SetKey, values: SetValues): Promise<ExerciseSet> {
   const row = unwrap<ExerciseSet>(
     await supabase
       .from('exercise_sets')
-      .upsert({ exercise_id: exerciseId, week_start: weekStart, set_number: setNumber, ...values }, { onConflict: SET_CONFLICT })
+      .upsert({ ...setIdentity(key), ...values }, { onConflict: SET_CONFLICT })
       .select(SET_COLUMNS)
       .single(),
   )
   return normalizeSet(row)
 }
 
-type NewSet = Pick<ExerciseSet, 'exercise_id' | 'week_start' | 'set_number'> & SetValues
-
-export async function saveSets(rows: NewSet[]): Promise<ExerciseSet[]> {
-  const saved = unwrap<ExerciseSet[]>(await supabase.from('exercise_sets').upsert(rows, { onConflict: SET_CONFLICT }).select(SET_COLUMNS))
+export async function saveSets(rows: Array<SetKey & SetValues>): Promise<ExerciseSet[]> {
+  const payload = rows.map(({ exercise, weekStart, setNumber, weight_kg, reps }) => ({
+    ...setIdentity({ exercise, weekStart, setNumber }),
+    weight_kg,
+    reps,
+  }))
+  const saved = unwrap<ExerciseSet[]>(await supabase.from('exercise_sets').upsert(payload, { onConflict: SET_CONFLICT }).select(SET_COLUMNS))
   return saved.map(normalizeSet)
 }
 
@@ -183,10 +252,10 @@ export async function deleteSet(exerciseId: string, weekStart: string, setNumber
 
 // ---- Progress ----
 
-export async function fetchSummaries(fromWeek: string, exerciseId?: string): Promise<WeeklySummary[]> {
-  const query = supabase.from('exercise_weekly_summary').select(SUMMARY_COLUMNS).gte('week_start', fromWeek)
-  const filtered = exerciseId ? query.eq('exercise_id', exerciseId) : query
-  const rows = unwrap<WeeklySummary[]>(await filtered.order('week_start'))
+export async function fetchSummaries(fromWeek: string, movementId?: string): Promise<MovementSummary[]> {
+  const query = supabase.from('movement_weekly_summary').select(SUMMARY_COLUMNS).gte('week_start', fromWeek)
+  const filtered = movementId ? query.eq('movement_id', movementId) : query
+  const rows = unwrap<MovementSummary[]>(await filtered.order('week_start'))
   return rows.map(normalizeSummary)
 }
 
@@ -238,7 +307,6 @@ export async function saveDayNote(dayId: string, weekStart: string, note: string
 export async function fetchSettings(userId: string): Promise<UserSettings> {
   const existing = unwrap<UserSettings | null>(await supabase.from('user_settings').select(SETTINGS_COLUMNS).maybeSingle())
   if (existing) return existing
-  // Accounts created before the settings table existed.
   return unwrap<UserSettings>(
     await supabase.from('user_settings').upsert({ user_id: userId }, { onConflict: 'user_id' }).select(SETTINGS_COLUMNS).single(),
   )
@@ -272,6 +340,43 @@ export async function deleteBodyEntry(entryDate: string) {
   unwrap(await supabase.from('body_entries').delete().eq('entry_date', entryDate))
 }
 
+// ---- Progress photos (private to you) ----
+
+export async function fetchPhotos(): Promise<ProgressPhoto[]> {
+  const rows = unwrap<ProgressPhoto[]>(await supabase.from('progress_photos').select(PHOTO_COLUMNS).order('taken_on', { ascending: false }))
+  return rows.map(row => ({ ...row, weight_kg: toNumber(row.weight_kg) }))
+}
+
+export async function uploadPhoto(file: File, takenOn: string, note: string | null, weightKg: number | null): Promise<ProgressPhoto> {
+  const path = `${takenOn}-${Date.now()}.jpg`
+  const upload = await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { upsert: false })
+  if (upload.error) throw new Error(upload.error.message)
+  try {
+    const row = unwrap<ProgressPhoto>(
+      await supabase
+        .from('progress_photos')
+        .insert({ taken_on: takenOn, storage_path: path, note, weight_kg: weightKg })
+        .select(PHOTO_COLUMNS)
+        .single(),
+    )
+    return { ...row, weight_kg: toNumber(row.weight_kg) }
+  } catch (error) {
+    await supabase.storage.from(PHOTO_BUCKET).remove([path])
+    throw error
+  }
+}
+
+export async function deletePhoto(photo: ProgressPhoto) {
+  unwrap(await supabase.from('progress_photos').delete().eq('id', photo.id))
+  await supabase.storage.from(PHOTO_BUCKET).remove([photo.storage_path])
+}
+
+export async function signPhotoUrl(storagePath: string, seconds = 3600): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(storagePath, seconds)
+  if (error) return null
+  return data?.signedUrl ?? null
+}
+
 // ---- Streak ----
 
 export async function fetchSessions(fromDate: string): Promise<WorkoutSession[]> {
@@ -289,16 +394,31 @@ export async function logSession(sessionDate: string, dayId: string) {
   )
 }
 
-// ---- Admin: messages and images for someone else's app ----
+// ---- Partner connection ----
 
-export async function fetchIsAdmin(userId: string): Promise<boolean> {
-  const row = unwrap<{ user_id: string } | null>(await supabase.from('admins').select('user_id').eq('user_id', userId).maybeSingle())
-  return row !== null
+export async function fetchConnections(): Promise<Connection[]> {
+  return unwrap<Connection[]>(await supabase.from('connections').select(CONNECTION_COLUMNS).order('created_at'))
 }
 
-export async function fetchAdminTargets(): Promise<AdminTarget[]> {
-  return unwrap<AdminTarget[]>(await supabase.from('admin_targets').select('admin_id, target_user_id, display_name'))
+export async function requestConnection(email: string, label: string | null) {
+  const { error } = await supabase.rpc('request_connection', { partner_email: email, my_label_for_them: label })
+  if (error) throw new Error(error.message)
 }
+
+export async function respondToConnection(connectionId: string, accept: boolean, label: string | null) {
+  const { error } = await supabase.rpc('respond_to_connection', {
+    connection_id: connectionId,
+    accept,
+    my_label_for_them: label,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export async function cancelConnection(connectionId: string) {
+  unwrap(await supabase.from('connections').delete().eq('id', connectionId))
+}
+
+// ---- Messages and pictures for the person you are connected to ----
 
 export async function fetchMessages(targetUserId: string): Promise<LoveMessage[]> {
   return unwrap<LoveMessage[]>(
@@ -344,10 +464,8 @@ export async function fetchStreakImages(targetUserId?: string): Promise<StreakIm
   return unwrap<StreakImage[]>(await filtered.order('created_at'))
 }
 
-/** Uploads the picture into the private bucket and records it. */
 export async function uploadStreakImage(targetUserId: string, state: StreakState, file: File, caption: string | null): Promise<StreakImage> {
-  const extension = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-  const path = `${targetUserId}/${state}-${Date.now()}.${extension}`
+  const path = `${targetUserId}/${state}-${Date.now()}.jpg`
   const upload = await supabase.storage.from(IMAGE_BUCKET).upload(path, file, { upsert: false })
   if (upload.error) throw new Error(upload.error.message)
 
@@ -360,7 +478,6 @@ export async function uploadStreakImage(targetUserId: string, state: StreakState
         .single(),
     )
   } catch (error) {
-    // Do not leave an orphaned file behind if the row could not be written.
     await supabase.storage.from(IMAGE_BUCKET).remove([path])
     throw error
   }
@@ -371,7 +488,6 @@ export async function deleteStreakImage(image: StreakImage) {
   await supabase.storage.from(IMAGE_BUCKET).remove([image.storage_path])
 }
 
-/** The bucket is private, so pictures are read through a short-lived signed link. */
 export async function signImageUrl(storagePath: string, seconds = 3600): Promise<string | null> {
   const { data, error } = await supabase.storage.from(IMAGE_BUCKET).createSignedUrl(storagePath, seconds)
   if (error) return null

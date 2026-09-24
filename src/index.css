@@ -1442,3 +1442,208 @@ code {
 .message-list__body .muted {
   font-size: 0.75rem;
 }
+
+/* ---------- Exercise library ---------- */
+
+.lead {
+  margin: -8px 0 16px;
+  font-size: 0.9rem;
+}
+
+.add-hint {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+}
+
+.movement-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.movement-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.movement-list li.is-archived {
+  opacity: 0.5;
+}
+
+.movement__name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement__rename {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.movement__rename .field {
+  flex: 1 1 100%;
+}
+
+.star {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--border-strong);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.star.is-on {
+  color: var(--accent-bright);
+}
+
+/* ---------- Partner ---------- */
+
+.request-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.request-row span {
+  flex: 1;
+  min-width: 140px;
+}
+
+.icon-btn.has-badge {
+  position: relative;
+}
+
+.icon-btn.has-badge::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-bright);
+}
+
+/* ---------- Progress photos ---------- */
+
+.photo-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.photo {
+  position: relative;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.photo.is-selected {
+  border-color: var(--accent);
+}
+
+.photo img,
+.photo__placeholder {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.photo__pick {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.photo__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.photo__note {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.photo__delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.compare figure {
+  margin: 0;
+}
+
+.compare img,
+.compare .photo__placeholder {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.compare figcaption {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.photo-link {
+  margin: -8px 0 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent-bright);
+}

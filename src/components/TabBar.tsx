@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, Chart, Heart } from './Icons'
+import { Calendar, Chart, Dumbbell, Heart } from './Icons'
 
 export default function TabBar() {
   return (
@@ -7,6 +7,10 @@ export default function TabBar() {
       <NavLink to="/" end className="tabbar__link">
         <Calendar />
         <span>Week</span>
+      </NavLink>
+      <NavLink to="/exercises" className="tabbar__link">
+        <Dumbbell />
+        <span>Exercises</span>
       </NavLink>
       <NavLink to="/body" className="tabbar__link">
         <Heart />
