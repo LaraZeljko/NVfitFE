@@ -426,9 +426,15 @@ export async function fetchMessages(targetUserId: string): Promise<LoveMessage[]
   )
 }
 
-/** What the target's app reads: only the active messages meant for them. */
-export async function fetchMyMessages(): Promise<LoveMessage[]> {
-  return unwrap<LoveMessage[]>(await supabase.from('love_messages').select(MESSAGE_COLUMNS).eq('is_active', true))
+/**
+ * Only the active messages written FOR you.
+ * The filter matters: the access rules also hand you the messages you wrote for
+ * your partner, because you are allowed to edit those.
+ */
+export async function fetchMyMessages(userId: string): Promise<LoveMessage[]> {
+  return unwrap<LoveMessage[]>(
+    await supabase.from('love_messages').select(MESSAGE_COLUMNS).eq('target_user_id', userId).eq('is_active', true),
+  )
 }
 
 export async function addMessage(

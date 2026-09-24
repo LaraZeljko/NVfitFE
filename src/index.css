@@ -1647,3 +1647,11 @@ code {
   font-weight: 600;
   color: var(--accent-bright);
 }
+
+.streak--plain {
+  padding: 10px 14px;
+}
+
+.streak--plain .streak__body {
+  gap: 1px;
+}

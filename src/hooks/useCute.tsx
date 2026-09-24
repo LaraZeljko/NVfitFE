@@ -14,7 +14,8 @@ export type Partner = {
 }
 
 type Decoration = {
-  displayName: string
+  /** How your partner calls you — null until they set it. */
+  displayName: string | null
   messages: LoveMessage[]
   images: StreakImage[]
 }
@@ -74,10 +75,12 @@ export function CuteProvider({ userId, children }: { userId: string; children: R
 
         let decoration: Decoration | null = null
         if (partners.length > 0) {
-          const [messages, images] = await Promise.all([fetchMyMessages(), fetchStreakImages()])
-          const mine = images.filter(image => image.target_user_id === userId)
-          if (messages.length > 0 || mine.length > 0) {
-            decoration = { displayName: partners[0].theirLabelForYou ?? 'you', messages, images: mine }
+          const [messages, images] = await Promise.all([fetchMyMessages(userId), fetchStreakImages()])
+          decoration = {
+            displayName: partners[0].theirLabelForYou,
+            messages,
+            // The rules also return pictures you uploaded for them; keep yours.
+            images: images.filter(image => image.target_user_id === userId),
           }
         }
 

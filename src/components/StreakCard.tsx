@@ -6,20 +6,23 @@ import type { LoveMessage, StreakImage } from '../types'
 
 type Props = {
   streak: StreakInfo
+  /** Only set when a partner has uploaded pictures for you. */
   image: StreakImage | null
   message: LoveMessage | null
-  displayName: string
+  displayName: string | null
 }
 
-function greeting(name: string, streak: StreakInfo) {
+function greeting(name: string | null, streak: StreakInfo) {
   const hour = new Date().getHours()
   const part = hour < 11 ? 'Morning' : hour < 18 ? 'Hey' : 'Evening'
-  if (streak.todayIsRest) return `${part}, ${name} — rest day`
-  if (streak.todayDone) return `${part}, ${name} — done for today`
-  return `${part}, ${name}`
+  const who = name ? `${part}, ${name}` : part
+  if (streak.todayIsRest) return `${who} — rest day`
+  if (streak.todayDone) return `${who} — done for today`
+  return who
 }
 
-/** The picture, the streak and today's message — only for the account someone decorates. */
+/** Your training streak. Everyone has one; the picture and message only appear
+ *  once a partner has put them there. */
 export default function StreakCard({ streak, image, message, displayName }: Props) {
   const [url, setUrl] = useState<string | null>(null)
 
@@ -38,10 +41,12 @@ export default function StreakCard({ streak, image, message, displayName }: Prop
   }, [image])
 
   return (
-    <section className={`streak streak--${streak.state}`}>
-      <div className="streak__picture">
-        {url ? <img src={url} alt={image?.caption ?? ''} /> : <span className="streak__placeholder" aria-hidden="true" />}
-      </div>
+    <section className={`streak streak--${streak.state}${image ? '' : ' streak--plain'}`}>
+      {image && (
+        <div className="streak__picture">
+          {url ? <img src={url} alt={image.caption ?? ''} /> : <span className="streak__placeholder" aria-hidden="true" />}
+        </div>
+      )}
       <div className="streak__body">
         <p className="streak__greeting">{greeting(displayName, streak)}</p>
         <p className="streak__count">

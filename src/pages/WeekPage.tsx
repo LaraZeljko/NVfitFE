@@ -86,12 +86,12 @@ export default function WeekPage() {
 
       <OfflineBanner />
 
-      {data && streak && decoration && (
+      {data && streak && (
         <StreakCard
           streak={streak}
-          image={pickImage(decoration.images, streak.state)}
-          message={pickMessage(decoration.messages)}
-          displayName={decoration.displayName}
+          image={decoration ? pickImage(decoration.images, streak.state) : null}
+          message={decoration ? pickMessage(decoration.messages) : null}
+          displayName={decoration?.displayName ?? null}
         />
       )}
 
