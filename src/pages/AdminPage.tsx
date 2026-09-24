@@ -8,13 +8,10 @@ import { useCute } from '../hooks/useCute'
 import { useSaveQueue } from '../hooks/useSaveQueue'
 import {
   addMessage,
-  cancelConnection,
   deleteMessage,
   deleteStreakImage,
   fetchMessages,
   fetchStreakImages,
-  requestConnection,
-  respondToConnection,
   signImageUrl,
   updateMessage,
   uploadStreakImage,
@@ -52,7 +49,7 @@ function Thumb({ image, onDelete }: { image: StreakImage; onDelete: () => void }
 }
 
 export default function AdminPage() {
-  const { loading, partners, incoming, outgoing, reload } = useCute()
+  const { loading, partners, incoming } = useCute()
   const save = useSaveQueue()
   const fileRef = useRef<HTMLInputElement | null>(null)
 
@@ -60,9 +57,6 @@ export default function AdminPage() {
   const [images, setImages] = useState<StreakImage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
-
-  const [email, setEmail] = useState('')
-  const [partnerLabel, setPartnerLabel] = useState('')
 
   const [body, setBody] = useState('')
   const [scope, setScope] = useState<'any' | 'weekday' | 'date'>('any')
@@ -102,30 +96,6 @@ export default function AdminPage() {
       <SaveIndicator status={save.status} />
     </header>
   )
-
-  async function handleRequest(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const address = email.trim()
-    if (!address) return
-    setError(null)
-    const done = await save.run(() => requestConnection(address, partnerLabel.trim() || null))
-    if (done !== undefined) {
-      setEmail('')
-      setPartnerLabel('')
-      reload()
-    }
-  }
-
-  async function handleRespond(connectionId: string, accept: boolean) {
-    const label = accept ? window.prompt('What do you call them? (shows as their name in your app)') : null
-    const done = await save.run(() => respondToConnection(connectionId, accept, label?.trim() || null))
-    if (done !== undefined) reload()
-  }
-
-  async function handleCancel(connectionId: string) {
-    const done = await save.run(() => cancelConnection(connectionId))
-    if (done !== undefined) reload()
-  }
 
   async function handleAddMessage(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -189,62 +159,16 @@ export default function AdminPage() {
     return (
       <div className="page">
         {header}
-        {save.error && (
-          <div className="banner banner--error" role="alert">
-            {save.error}
-          </div>
-        )}
-
-        {incoming.length > 0 && (
-          <section className="card">
-            <h2 className="card__title">Waiting for your answer</h2>
-            {incoming.map(request => (
-              <div key={request.id} className="request-row">
-                <span>{request.requester_label ? `${request.requester_label} wants to connect` : 'Someone wants to connect'}</span>
-                <button type="button" className="btn btn--accent btn--small" onClick={() => void handleRespond(request.id, true)}>
-                  Accept
-                </button>
-                <button type="button" className="btn btn--small" onClick={() => void handleRespond(request.id, false)}>
-                  Decline
-                </button>
-              </div>
-            ))}
-          </section>
-        )}
-
-        <section className="card">
-          <h2 className="card__title">Connect with someone</h2>
-          <p className="card__sub">
-            Once you are connected you can both leave messages and pictures in each other's app. Nobody else ever sees them.
+        <div className="empty">
+          <p>
+            {incoming.length > 0
+              ? 'Someone wants to connect with you.'
+              : 'Connect with someone first, then you can leave messages and pictures in their app.'}
           </p>
-          <form className="message-form" onSubmit={handleRequest}>
-            <label className="label">
-              Their email
-              <input className="field" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
-            </label>
-            <label className="label">
-              What you call them
-              <input className="field" maxLength={40} value={partnerLabel} onChange={e => setPartnerLabel(e.target.value)} placeholder="e.g. Neven" />
-            </label>
-            <button type="submit" className="btn btn--accent" disabled={!email.trim()}>
-              Send request
-            </button>
-          </form>
-        </section>
-
-        {outgoing.length > 0 && (
-          <section className="card">
-            <h2 className="card__title">Sent</h2>
-            {outgoing.map(request => (
-              <div key={request.id} className="request-row">
-                <span>Waiting for {request.requester_label ?? 'them'} to accept</span>
-                <button type="button" className="btn btn--small" onClick={() => void handleCancel(request.id)}>
-                  Cancel
-                </button>
-              </div>
-            ))}
-          </section>
-        )}
+          <Link className="btn btn--accent" to="/settings">
+            Open settings
+          </Link>
+        </div>
       </div>
     )
   }
